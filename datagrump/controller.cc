@@ -10,11 +10,14 @@ Controller::Controller( const bool debug )
   : debug_( debug )
 {}
 
+
+unsigned int the_window_size = 1; /* Initial window size */
+
 /* Get current window size, in datagrams */
 unsigned int Controller::window_size()
 {
   /* Default: fixed window size of 100 outstanding datagrams */
-  unsigned int the_window_size = 50;
+  // unsigned int the_window_size = 50;
 
   if ( debug_ ) {
     cerr << "At time " << timestamp_ms()
@@ -40,6 +43,10 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
   }
 }
 
+unsigned int inc_size = 1;
+unsigned int dec_size = 1;
+unsigned int rtt_threshold = 65;
+
 /* An ack was received */
 void Controller::ack_received( const uint64_t sequence_number_acked,
 			       /* what sequence number was acknowledged */
@@ -59,6 +66,12 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 	 << ", received @ time " << recv_timestamp_acked << " by receiver's clock)"
 	 << endl;
   }
+
+  if ( timestamp_ack_received - send_timestamp_acked >= rtt_threshold && the_window_size > dec_size ){
+    the_window_size -= dec_size;
+  } else {
+    the_window_size += inc_size;
+  } 
 }
 
 /* How long to wait (in milliseconds) if there are no acks
