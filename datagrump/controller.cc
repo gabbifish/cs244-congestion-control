@@ -5,6 +5,17 @@
 
 using namespace std;
 
+/* AIMD constants */
+const unsigned int ADD_INCREASE = 1;
+const float MULT_DECREASE = .5;
+
+/* Used for estimating RTT (round trip time) and setting timeout */
+unsigned int rtt = 0;
+const float SMOOTHING_FACTOR = .9;
+const unsigned int DELAY_VARIANCE = 2;
+
+unsigned int the_window_size = 20;
+
 /* Default constructor */
 Controller::Controller( const bool debug )
   : debug_( debug )
@@ -13,8 +24,6 @@ Controller::Controller( const bool debug )
 /* Get current window size, in datagrams */
 unsigned int Controller::window_size()
 {
-  /* Default: fixed window size of 100 outstanding datagrams */
-  unsigned int the_window_size = 50;
 
   if ( debug_ ) {
     cerr << "At time " << timestamp_ms()
@@ -32,7 +41,10 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
 				    const bool after_timeout
 				    /* datagram was sent because of a timeout */ )
 {
-  /* Default: take no action */
+  /* AIMD: decrease window size if datagram was sent due to timeout */
+  if (after_timeout) {
+    the_window_size *= MULT_DECREASE;
+  }
 
   if ( debug_ ) {
     cerr << "At time " << send_timestamp
@@ -50,7 +62,22 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 			       const uint64_t timestamp_ack_received )
                                /* when the ack was received (by sender) */
 {
-  /* Default: take no action */
+  /* AIMD: increase window size when ack received
+     (duplicate acks are not possible since sender never
+     sends same sequence number twice and
+     receiver only acks received packets once)*/
+  the_window_size += ADD_INCREASE;
+
+  /* Update our estimate of RTT */
+  uint64_t measurement = timestamp_ack_received - send_timestamp_acked;
+  if (rtt == 0) {
+    rtt = measurement;
+  } else {
+    rtt = SMOOTHING_FACTOR*rtt + (1-SMOOTHING_FACTOR)*measurement;
+  }
+  cerr << "Current measurement: " << measurement
+    << ", rtt estimate: " << rtt
+    << endl;
 
   if ( debug_ ) {
     cerr << "At time " << timestamp_ack_received
@@ -65,5 +92,6 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
    before sending one more datagram */
 unsigned int Controller::timeout_ms()
 {
-  return 1000; /* timeout of one second */
+  return rtt;
+  //return 25;
 }
