@@ -1,4 +1,5 @@
 #include <iostream>
+#include <math.h>
 
 #include "controller.hh"
 #include "timestamp.hh"
@@ -9,7 +10,8 @@ using namespace std;
 const unsigned int ADD_INCREASE = 1;
 const float MULT_DECREASE = .5;
 
-unsigned int the_window_size = 20;
+const float MAX_WINDOW_SZ = 200;
+float the_window_size = 1;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
@@ -19,13 +21,16 @@ Controller::Controller( const bool debug )
 /* Get current window size, in datagrams */
 unsigned int Controller::window_size()
 {
+  unsigned int effective_window_size = floor(min(the_window_size,MAX_WINDOW_SZ));
 
   if ( debug_ ) {
     cerr << "At time " << timestamp_ms()
-	 << " window size is " << the_window_size << endl;
+	 << " window size is " << the_window_size
+   << ", effective window size is " << effective_window_size
+   << endl;
   }
 
-  return the_window_size;
+  return effective_window_size;
 }
 
 /* A datagram was sent */
@@ -61,7 +66,9 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
      (duplicate acks are not possible since sender never
      sends same sequence number twice and
      receiver only acks received packets once)*/
-  the_window_size += ADD_INCREASE;
+  if (the_window_size < MAX_WINDOW_SZ) {
+    the_window_size += ADD_INCREASE / the_window_size;
+  }
 
   if ( debug_ ) {
     cerr << "At time " << timestamp_ack_received
@@ -76,5 +83,5 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
    before sending one more datagram */
 unsigned int Controller::timeout_ms()
 {
-  return 15;
+  return 50;
 }
