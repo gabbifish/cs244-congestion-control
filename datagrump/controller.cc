@@ -42,7 +42,7 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
 				    /* datagram was sent because of a timeout */ )
 {
   /* AIMD: decrease window size if datagram was sent due to timeout */
-  if (after_timeout) {
+  if (after_timeout && the_window_size > 1) {
     the_window_size *= MULT_DECREASE;
   }
 
@@ -83,5 +83,5 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
    before sending one more datagram */
 unsigned int Controller::timeout_ms()
 {
-  return 50;
+  return 25;
 }
