@@ -10,7 +10,10 @@ using namespace std;
 const unsigned int ADD_INCREASE = 1;
 const float MULT_DECREASE = .5;
 
+float ssthresh = 100;
 float the_window_size = 1;
+
+uint64_t rtt_thresh = 120;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
@@ -39,9 +42,11 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
 {
   /* AIMD: decrease window size if datagram was sent due to timeout */
   /* check if window size is greater than 1 to avoid underflow */
-  if (after_timeout && the_window_size > 1) {
-    the_window_size *= MULT_DECREASE;
-  }
+  // if (after_timeout && the_window_size > 1) {
+  //   //the_window_size *= MULT_DECREASE;
+  //   ssthresh = floor(the_window_size/2);
+  //   the_window_size = 1;
+  // }
 
   if ( debug_ ) {
     cerr << "At time " << send_timestamp
@@ -63,7 +68,18 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
      (duplicate acks are not possible since sender never
      sends same sequence number twice and
      receiver only acks received packets once)*/
-  the_window_size += ADD_INCREASE / the_window_size;
+  uint64_t rtt = timestamp_ack_received - send_timestamp_acked;
+  if (rtt >= rtt_thresh && the_window_size > 1) {
+    the_window_size *= MULT_DECREASE;
+    ssthresh = floor(the_window_size/2);
+    the_window_size = 1;
+  } else if (the_window_size < ssthresh) {
+    the_window_size += 1;
+  } else {
+    the_window_size += .5 / the_window_size;
+  }
+
+  
 
   if ( debug_ ) {
     cerr << "At time " << timestamp_ack_received
@@ -78,5 +94,5 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
    before sending one more datagram */
 unsigned int Controller::timeout_ms()
 {
-  return 50;
+  return 60;
 }
