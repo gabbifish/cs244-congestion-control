@@ -48,7 +48,9 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
   }
 }
 
-unsigned int rtt_threshold = 180;
+unsigned int rtt_threshold = 120;
+float rtt_update = 0.0001;
+unsigned int M = 3;
 
 /* An ack was received */
 void Controller::ack_received( const uint64_t sequence_number_acked,
@@ -60,11 +62,13 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 			       const uint64_t timestamp_ack_received )
                                /* when the ack was received (by sender) */
 {
-  unsigned int rtt = timestamp_ack_received - send_timestamp_acked;
-  cerr << "RTT is" << rtt << endl;
+  float rtt = float(timestamp_ack_received - send_timestamp_acked);
+  rtt_threshold = uint32_t((1.0-rtt_update)*float(rtt_threshold) + rtt_update*rtt);
+  //rtt_threshold = M * rtt_threshold;
+  cerr << "RTT is " << rtt << " while RTT threshold is " << rtt_threshold << endl;
   /* AIMD: decrease window size if datagram was sent due to timeout */
   /* check if window size is greater than 1 to avoid underflow */
-  if (rtt >= rtt_threshold && the_window_size > 1) {
+  if (rtt >= M*rtt_threshold && the_window_size > 1) {
     the_window_size *= MULT_DECREASE;
   } else {
   /* AIMD: increase window size when ack received
