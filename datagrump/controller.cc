@@ -37,17 +37,18 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
 				    const bool after_timeout
 				    /* datagram was sent because of a timeout */ )
 {
-  /* AIMD: decrease window size if datagram was sent due to timeout */
-  /* check if window size is greater than 1 to avoid underflow */
-  if (after_timeout && the_window_size > 1) {
-    the_window_size *= MULT_DECREASE;
-  }
+
+//  if (after_timeout && the_window_size > 1) {
+//    the_window_size *= MULT_DECREASE;
+//  }
 
   if ( debug_ ) {
     cerr << "At time " << send_timestamp
 	 << " sent datagram " << sequence_number << " (timeout = " << after_timeout << ")\n";
   }
 }
+
+unsigned int rtt_threshold = 180;
 
 /* An ack was received */
 void Controller::ack_received( const uint64_t sequence_number_acked,
@@ -59,11 +60,19 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 			       const uint64_t timestamp_ack_received )
                                /* when the ack was received (by sender) */
 {
+  unsigned int rtt = timestamp_ack_received - send_timestamp_acked;
+  cerr << "RTT is" << rtt << endl;
+  /* AIMD: decrease window size if datagram was sent due to timeout */
+  /* check if window size is greater than 1 to avoid underflow */
+  if (rtt >= rtt_threshold && the_window_size > 1) {
+    the_window_size *= MULT_DECREASE;
+  } else {
   /* AIMD: increase window size when ack received
      (duplicate acks are not possible since sender never
      sends same sequence number twice and
      receiver only acks received packets once)*/
-  the_window_size += ADD_INCREASE / the_window_size;
+    the_window_size += ADD_INCREASE / the_window_size;
+  }
 
   if ( debug_ ) {
     cerr << "At time " << timestamp_ack_received
@@ -78,5 +87,5 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
    before sending one more datagram */
 unsigned int Controller::timeout_ms()
 {
-  return 50;
+  return 60;
 }
