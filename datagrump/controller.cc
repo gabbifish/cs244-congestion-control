@@ -10,7 +10,54 @@ using namespace std;
 const unsigned int ADD_INCREASE = 1;
 const float MULT_DECREASE = .5;
 
-float the_window_size = 1;
+/* Initial window size is 10. */
+float the_window_size = 10; 
+
+/* CONSTANTS for QUIC using time based loss detection. */
+/* Maximum number of tail loss probes before an RTO fires. */
+const uint32_t kMaxTLPs = 2;  
+
+/* Maximum reordering in packet
+   number space before FACK style loss detection considers a packet
+   lost. */
+const uint32_t kReorderingThreshold = 3; 
+
+/* Maximum reordering in time
+   space before time based loss detection considers a packet lost.
+   In fraction of an RTT. */
+float kTimeReorderingFraction = 0.125;
+
+/* Minimum time in the future a tail loss probe alarm may be set for. Defualt 10ms. */
+const uint32_t kMinTLPTimeout = 10;  
+
+/* Minimum time in the future an RTO alarm may be set for. Defualt 200ms. */
+const uint32_t kMinRTOTimeout = 200;
+
+/* The length of the peer's delayed ack timer. Default 25 ms. */
+const uint32_t kDelayedAckTimeout = 25; 
+
+/* The default RTT used before an RTT sample is taken. Default 100ms. */
+const uint32_t kDefaultInitialRtt = 100ms;
+
+/* UPDATED VARS */
+uint32_t tlp_count = 0;
+uint32_t rto_count = 0;
+uint32_t reordering_threshold = 1000000; /* Approximating inf. */
+uint32_t time_reordering_fraction = kTimeReorderingFraction;
+uint32_t loss_time = 0;
+float smoothed_rtt = 0.0;
+float rttvar = 0.0;
+float min_rtt = 0.0;
+uint32_t max_ack_delay = 0;
+uint32_t largest_sent_before_rto = 0;
+uint32_t time_of_last_sent_packet = 0;
+uint64_t largest_sent_packet = 0;
+uint64_t largest_acked_packet = 0;
+float latest_rtt = 0.0;
+
+uint32_t sshthresh = 10000; /* Approximating inf. */
+uint32_t bytes_in_flight = 0;
+uint32_t end_of_recovery = 0;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
@@ -37,20 +84,25 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
 				    const bool after_timeout
 				    /* datagram was sent because of a timeout */ )
 {
-
-//  if (after_timeout && the_window_size > 1) {
-//    the_window_size *= MULT_DECREASE;
-//  }
-
   if ( debug_ ) {
     cerr << "At time " << send_timestamp
 	 << " sent datagram " << sequence_number << " (timeout = " << after_timeout << ")\n";
   }
+
+  bytes_
 }
 
-unsigned int rtt_threshold = 120;
-float rtt_update = 0.0001;
-unsigned int M = 3;
+void update_rtt (uint64_t latest_rtt) 
+{
+  if (smoothed_rtt == 0.0) {
+    smoothed_rtt = latest_rtt;
+    rttvar = latest_rtt / 2.0;
+  }
+  else {
+    rttvar = 0.75 * rttvar + .25 * float(abs(smoothed_rtt - latest_rtt));
+    smoothed_rtt = .875 * smoothed_rtt + .125 * latest_rtt
+  }
+}
 
 /* An ack was received */
 void Controller::ack_received( const uint64_t sequence_number_acked,
@@ -62,22 +114,6 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 			       const uint64_t timestamp_ack_received )
                                /* when the ack was received (by sender) */
 {
-  float rtt = float(timestamp_ack_received - send_timestamp_acked);
-  rtt_threshold = uint32_t((1.0-rtt_update)*float(rtt_threshold) + rtt_update*rtt);
-  //rtt_threshold = M * rtt_threshold;
-  cerr << "RTT is " << rtt << " while RTT threshold is " << rtt_threshold << endl;
-  /* AIMD: decrease window size if datagram was sent due to timeout */
-  /* check if window size is greater than 1 to avoid underflow */
-  if (rtt >= M*rtt_threshold && the_window_size > 1) {
-    the_window_size *= MULT_DECREASE;
-  } else {
-  /* AIMD: increase window size when ack received
-     (duplicate acks are not possible since sender never
-     sends same sequence number twice and
-     receiver only acks received packets once)*/
-    the_window_size += ADD_INCREASE / the_window_size;
-  }
-
   if ( debug_ ) {
     cerr << "At time " << timestamp_ack_received
 	 << " received ack for datagram " << sequence_number_acked
@@ -85,6 +121,11 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 	 << ", received @ time " << recv_timestamp_acked << " by receiver's clock)"
 	 << endl;
   }
+
+  largest_acked_packet = sequence_number_acked;
+  latest_rtt = float(timestamp_ack_received - send_timestamp_acked);
+  update_rtt(latest_rtt);
+
 }
 
 /* How long to wait (in milliseconds) if there are no acks
